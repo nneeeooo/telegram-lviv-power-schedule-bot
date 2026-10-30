@@ -167,7 +167,7 @@ impl App {
                         c.info_msg = new;
                         c.info_dot = Some(new_dot);
                     }
-                    st.save();
+                    st.save().await;
                 } else {
                     // Keep "(Перевірено …)" fresh without a notification.
                     self.bot.edit_text(chat, id, &text).await.ok();
@@ -210,7 +210,7 @@ impl App {
             c.info_dot = Some(new_dot);
             c.had_schedule = !s.is_empty();
         }
-        st.save();
+        st.save().await;
     }
 
     async fn send_card(&self, chat: i64, png: Vec<u8>, cap: &str, kb: &serde_json::Value) -> Option<i64> {
@@ -247,7 +247,7 @@ impl App {
             let c = st.chats.entry(chat).or_default();
             let old = [c.card_msg.take(), c.info_msg.take()];
             c.drawn = None;
-            st.save();
+            st.save().await;
             old
         };
         for id in old.into_iter().flatten() {
@@ -268,7 +268,7 @@ impl App {
             "/start" | "➕" | "📋" | "🔄" => self.start(chat).await,
             "/stop" => {
                 let old = self.state.lock().await.chats.remove(&chat);
-                self.state.lock().await.save();
+                self.state.lock().await.save().await;
                 let ids: Vec<i64> = old.iter().flat_map(|c| [c.card_msg, c.info_msg]).flatten().collect();
                 for id in ids {
                     self.bot.delete(chat, id).await.ok();
@@ -340,7 +340,7 @@ async fn main() -> Result<()> {
         http,
         loe,
         r,
-        state: Mutex::new(State::load()),
+        state: Mutex::new(State::load().await),
         last: Mutex::new(None),
         ui: Mutex::new(HashMap::new()),
         busy: Mutex::new(HashSet::new()),
@@ -369,7 +369,7 @@ async fn main() -> Result<()> {
         }
         app.start(chat).await;
     }
-    app.state.lock().await.save();
+    app.state.lock().await.save().await;
 
     {
         let app = app.clone();

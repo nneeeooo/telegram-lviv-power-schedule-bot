@@ -179,7 +179,7 @@ impl App {
         {
             let mut st = self.state.lock().await;
             st.chats.entry(chat).or_default().houses.push(House { name, address: label, groups });
-            st.save();
+            st.save().await;
         }
         self.set_ui(chat, Menu::Main, Some(format!("✅ Слідкую за «{n}»"))).await;
         self.sync_chat(chat, true).await;
@@ -269,7 +269,7 @@ impl App {
                     let mut st = self.state.lock().await;
                     let c = st.chats.entry(chat).or_default();
                     let r = (i < c.houses.len()).then(|| c.houses.remove(i));
-                    st.save();
+                    st.save().await;
                     r
                 };
                 self.set_ui(chat, Menu::Houses, removed.map(|h| format!("Більше не слідкую за «{}»", h.name))).await;
