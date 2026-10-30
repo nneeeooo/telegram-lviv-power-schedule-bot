@@ -1,7 +1,7 @@
 # ==========================================
 # Builder Stage
 # ==========================================
-FROM docker.io/library/rust:1.85-alpine3.21 AS builder
+FROM docker.io/library/rust:alpine AS builder
 
 RUN apk add --no-cache musl-dev
 
