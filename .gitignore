@@ -1,0 +1,5 @@
+target/
+cache/
+.env
+*.png
+.DS_Store

@@ -1,0 +1,17 @@
+[package]
+name = "telegram-lviv-power-schedule-bot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ab_glyph = "0.2.32"
+anyhow = "1.0.104"
+chrono = "0.4.45"
+chrono-tz = "0.10.4"
+dotenvy = "0.15.7"
+regex = "1.13.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "multipart"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tiny-skia = "0.12.0"
+tokio = { version = "1.54.0", features = ["rt-multi-thread", "macros", "time", "sync"] }
