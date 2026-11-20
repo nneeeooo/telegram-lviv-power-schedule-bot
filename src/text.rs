@@ -18,6 +18,8 @@ impl Text {
             ("/System/Library/Fonts/SFNS.ttf", 0),
             ("/System/Library/Fonts/HelveticaNeue.ttc", 0),
             ("/System/Library/Fonts/Supplemental/Arial.ttf", 0),
+            ("C:/Windows/Fonts/segoeui.ttf", 0),
+            ("C:/Windows/Fonts/arial.ttf", 0),
         ] {
             if let Ok(data) = std::fs::read(path) {
                 if let Ok(font) = FontVec::try_from_vec_and_index(data, idx) {

@@ -53,15 +53,39 @@ pub fn caption(s: &Schedules, houses: &[House]) -> String {
     if let Some(a) = s.as_of() {
         out += &format!(" · станом на {a}");
     }
+    out += "\n";
     if let Some(d) = &s.today {
+        let n = now_kyiv();
+        let now = n.hour() * 60 + n.minute();
         for h in houses {
             for g in &h.groups {
-                let w = d.groups.get(g).map(|w| render::windows_text(w)).unwrap_or_else(|| "немає в графіку".into());
+                let w = d.groups.get(g).map(|w| status_now(w, now)).unwrap_or_else(|| "немає в графіку".into());
                 out += &format!("\n{}: {w}", who(h, g));
             }
         }
     }
     out
+}
+
+/// Status of one group at `now` (minutes): power now or not, and when that changes.
+fn status_now(w: &[loe::Window], now: u32) -> String {
+    let hm = render::hm;
+    // Back-to-back windows are one outage.
+    let mut merged: Vec<loe::Window> = Vec::new();
+    for &(a, b) in w {
+        match merged.last_mut() {
+            Some(last) if a <= last.1 => last.1 = last.1.max(b),
+            _ => merged.push((a, b)),
+        }
+    }
+    if let Some(&(_, b)) = merged.iter().find(|&&(a, b)| a <= now && now < b) {
+        return format!("немає світла, зʼявиться о {}", hm(b));
+    }
+    match merged.iter().find(|&&(a, _)| a > now) {
+        Some(&(a, b)) => format!("світло є, вимкнуть о {} (до {})", hm(a), hm(b)),
+        None if merged.is_empty() => "світло є весь день".into(),
+        None => "світло є до кінця дня".into(),
+    }
 }
 
 /// "18:56 17.10.2026" (LOE) -> "17.10 о 18:56".
@@ -110,7 +134,7 @@ fn info_text(s: &Schedules, houses: &[House]) -> String {
 fn card_png(r: &Renderer, s: &Schedules, houses: &[House]) -> Vec<u8> {
     let n = now_kyiv();
     let label = n.format("%H:%M %d.%m").to_string();
-    tokio::task::block_in_place(|| if s.is_empty() { r.frog(&label) } else { r.schedule(s, houses, n.date_naive(), &label) })
+    tokio::task::block_in_place(|| if s.is_empty() { r.frog(&label) } else { r.schedule(s, houses, n.date_naive(), n.hour(), &label) })
 }
 
 /// Current chat layout version (see state::Chat::v).
@@ -152,11 +176,15 @@ impl App {
             (c.houses.clone(), c.card_msg, c.info_msg, c.drawn.clone(), c.info_dot.clone())
         };
         let fp = fingerprint(&s, &houses);
-        let changed = drawn.as_deref() != Some(fp.as_str());
+        // `drawn` = fingerprint + the hour the card's "now" arrow points at: a new hour redraws
+        // the card silently, only a schedule change resends message 2.
+        let hour_fp = format!("{fp}\n#hour={}", now_kyiv().hour());
+        let changed = drawn.as_deref().map(|d| d.rsplit_once("\n#hour=").map_or(d, |x| x.0)) != Some(fp.as_str());
+        let hour_stale = drawn.as_deref() != Some(hour_fp.as_str());
         let text = info_text(&s, &houses);
         let new_dot = dot(&s, &houses).to_string();
         let dot_changed = old_dot.as_deref() != Some(new_dot.as_str());
-        if !changed && !force && card.is_some() {
+        if !changed && !hour_stale && !force && card.is_some() {
             if let Some(id) = info {
                 if dot_changed {
                     // Power went off / on: resend so Telegram notifies.
@@ -168,6 +196,12 @@ impl App {
                         c.info_dot = Some(new_dot);
                     }
                     st.save().await;
+                    drop(st);
+                    // Caption says whether power is on now.
+                    if let Some(m) = card {
+                        let (cap, kb) = self.face(chat).await;
+                        self.bot.edit_caption(chat, m, &cap, &kb).await.ok();
+                    }
                 } else {
                     // Keep "(Перевірено …)" fresh without a notification.
                     self.bot.edit_text(chat, id, &text).await.ok();
@@ -206,7 +240,7 @@ impl App {
         if let Some(c) = st.chats.get_mut(&chat) {
             c.card_msg = card;
             c.info_msg = info_new;
-            c.drawn = Some(fp);
+            c.drawn = Some(hour_fp);
             c.info_dot = Some(new_dot);
             c.had_schedule = !s.is_empty();
         }

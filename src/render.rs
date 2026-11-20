@@ -67,30 +67,30 @@ pub struct Renderer {
 
 impl Renderer {
     /// One block per (house, group): name, then a 24 h bar per published day.
-    pub fn schedule(&self, s: &Schedules, houses: &[House], today: NaiveDate, now_label: &str) -> Vec<u8> {
+    pub fn schedule(&self, s: &Schedules, houses: &[House], today: NaiveDate, now_hour: u32, now_label: &str) -> Vec<u8> {
         let rows: Vec<(&House, &String)> = houses.iter().flat_map(|h| h.groups.iter().map(move |g| (h, g))).collect();
         let days: Vec<&DaySchedule> = s.days().collect();
         let header = 190.0;
-        let block = 92.0 + days.len() as f32 * 132.0;
+        let block = 106.0 + days.len() as f32 * 132.0;
         let empty_h = if rows.is_empty() { 200.0 } else { 0.0 };
         let footer = 90.0;
         let h = (header + rows.len() as f32 * block + empty_h + footer).max(W as f32 * 0.62) as u32;
         let mut pm = Pixmap::new(W, h).expect("pixmap");
-        pm.fill(Color::from_rgba8(17, 19, 26, 255));
+        pm.fill(Color::from_rgba8(9, 9, 11, 255));
 
         // Header.
-        rect(&mut pm, 0.0, 0.0, W as f32, header - 20.0, &paint(255, 196, 0, 255));
-        self.text.draw(&mut pm, "Графік відключень світла", PAD, 86.0, 64.0, (20, 20, 20, 255));
+        rect(&mut pm, 0.0, header - 21.0, W as f32, 1.0, &paint(39, 39, 42, 255));
+        self.text.draw(&mut pm, "Графік відключень світла", PAD, 86.0, 64.0, (250, 250, 250, 255));
         let sub = match s.as_of() {
             Some(a) => format!("Львівобленерго · станом на {a}"),
             None => "Львівобленерго".into(),
         };
-        self.text.draw(&mut pm, &sub, PAD, 140.0, 36.0, (40, 40, 40, 255));
+        self.text.draw(&mut pm, &sub, PAD, 140.0, 36.0, (161, 161, 170, 255));
 
         let mut y = header + 10.0;
         if rows.is_empty() {
-            self.text.draw(&mut pm, "Адрес ще немає.", PAD, y + 60.0, 40.0, (240, 240, 245, 255));
-            self.text.draw(&mut pm, "Натисни «Слідкувати за адресою» під картинкою", PAD, y + 120.0, 40.0, (255, 196, 0, 255));
+            self.text.draw(&mut pm, "Адрес ще немає.", PAD, y + 60.0, 40.0, (250, 250, 250, 255));
+            self.text.draw(&mut pm, "Натисни «Слідкувати за адресою» під картинкою", PAD, y + 120.0, 40.0, (161, 161, 170, 255));
             y += empty_h;
         }
         let bar_x = PAD;
@@ -104,46 +104,68 @@ impl Renderer {
             } else {
                 format!("{} · група {}", house.name, group)
             };
-            self.text.draw(&mut pm, &title, PAD, y + 56.0, 44.0, (255, 255, 255, 255));
+            let card_h = 82.0 + days.len() as f32 * 132.0 + 4.0;
+            round_rect(&mut pm, PAD - 24.0, y + 4.0, bar_w + 48.0, card_h, 14.0, &paint(39, 39, 42, 255));
+            round_rect(&mut pm, PAD - 22.0, y + 6.0, bar_w + 44.0, card_h - 4.0, 12.0, &paint(17, 17, 19, 255));
+            self.text.draw(&mut pm, &title, PAD, y + 56.0, 44.0, (250, 250, 250, 255));
             y += 82.0;
             for d in &days {
                 let wins = d.groups.get(group.as_str()).cloned();
                 let label = day_label(d, today);
-                self.text.draw(&mut pm, &label, PAD, y + 30.0, 30.0, (190, 192, 200, 255));
+                self.text.draw(&mut pm, &label, PAD, y + 30.0, 30.0, (161, 161, 170, 255));
                 let (desc, col) = match &wins {
-                    None => ("групи немає в графіку".to_string(), (190, 192, 200, 255)),
-                    Some(w) if w.is_empty() => (windows_text(w), (90, 220, 120, 255)),
-                    Some(w) => (windows_text(w), (255, 120, 110, 255)),
+                    None => ("групи немає в графіку".to_string(), (161, 161, 170, 255)),
+                    Some(w) if w.is_empty() => (windows_text(w), (74, 222, 128, 255)),
+                    Some(w) => (windows_text(w), (248, 113, 113, 255)),
                 };
                 let lw = self.text.width(&label, 30.0);
                 self.text.draw(&mut pm, &format!("  {desc}"), PAD + lw, y + 30.0, 30.0, col);
-                // 24 h bar: green = power, red = outage.
+                // One square per hour: green = power, red = off all hour, orange = off part of it,
+                // grey = group not in the schedule.
                 let by = y + 46.0;
+                let gap = 4.0;
+                let cell = (bar_w + gap) / 24.0;
                 let bh = 46.0;
-                round_rect(&mut pm, bar_x, by, bar_w, bh, 10.0, &paint(46, 160, 90, 255));
-                for &(a, b) in wins.as_deref().unwrap_or(&[]) {
-                    let x0 = bar_x + bar_w * a as f32 / 1440.0;
-                    let x1 = bar_x + bar_w * b.min(1440) as f32 / 1440.0;
-                    rect(&mut pm, x0, by, x1 - x0, bh, &paint(230, 57, 70, 255));
+                for hour in 0..24u32 {
+                    let (h0, h1) = (hour * 60, hour * 60 + 60);
+                    let col = match wins.as_deref() {
+                        None => paint(39, 39, 42, 255),
+                        Some(w) => {
+                            let off: u32 = w.iter().map(|&(a, b)| b.min(h1).saturating_sub(a.max(h0))).sum();
+                            match off {
+                                0 => paint(34, 197, 94, 255),
+                                60.. => paint(239, 68, 68, 255),
+                                _ => paint(245, 158, 11, 255),
+                            }
+                        }
+                    };
+                    let x = bar_x + cell * hour as f32;
+                    round_rect(&mut pm, x, by, cell - gap, bh, 6.0, &col);
                 }
-                if wins.is_none() {
-                    round_rect(&mut pm, bar_x, by, bar_w, bh, 10.0, &paint(70, 72, 82, 255));
+                // "Now" arrow above the current hour, today's row only.
+                if d.date.map_or(false, |x| x == today) {
+                    let cx = bar_x + cell * now_hour as f32 + (cell - gap) / 2.0;
+                    let mut pb = PathBuilder::new();
+                    pb.move_to(cx - 9.0, by - 13.0);
+                    pb.line_to(cx + 9.0, by - 13.0);
+                    pb.line_to(cx, by - 2.0);
+                    pb.close();
+                    if let Some(path) = pb.finish() {
+                        pm.fill_path(&path, &paint(250, 250, 250, 255), FillRule::Winding, Transform::identity(), None);
+                    }
                 }
-                for hour in (0..=24).step_by(3) {
-                    let x = bar_x + bar_w * hour as f32 / 24.0;
-                    rect(&mut pm, x - 1.0, by + bh, 2.0, 8.0, &paint(150, 152, 160, 255));
-                    let t = format!("{hour}");
+                for hour in 0..24 {
+                    let t = format!("{hour:02}");
                     let tw = self.text.width(&t, 22.0);
-                    let tx = (x - tw / 2.0).clamp(bar_x, bar_x + bar_w - tw);
-                    self.text.draw(&mut pm, &t, tx, by + bh + 32.0, 22.0, (150, 152, 160, 255));
+                    let x = bar_x + cell * hour as f32 + (cell - gap - tw) / 2.0;
+                    self.text.draw(&mut pm, &t, x, by + bh + 30.0, 22.0, (161, 161, 170, 255));
                 }
                 y += 132.0;
             }
-            y += 10.0;
-            rect(&mut pm, PAD, y - 6.0, bar_w, 2.0, &paint(255, 255, 255, 30));
+            y += 24.0;
         }
         let foot = format!("Оновлено {now_label} · джерело poweron.loe.lviv.ua");
-        self.text.draw(&mut pm, &foot, PAD, h as f32 - 36.0, 26.0, (150, 152, 160, 255));
+        self.text.draw(&mut pm, &foot, PAD, h as f32 - 36.0, 26.0, (113, 113, 122, 255));
         pm.encode_png().expect("png")
     }
 
