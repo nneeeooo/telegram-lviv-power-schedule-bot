@@ -282,15 +282,6 @@ impl App {
                 }
                 self.sync_chat(chat, true).await;
             }
-            "/stop" => {
-                let old = self.state.lock().await.chats.remove(&chat);
-                self.state.lock().await.save().await;
-                let ids: Vec<i64> = old.iter().flat_map(|c| [c.card_msg, c.info_msg]).flatten().collect();
-                for id in ids {
-                    self.bot.delete(chat, id).await.ok();
-                }
-                self.bot.send_text(chat, "Зупинив, адреси видалено. /start — почати знову.").await.ok();
-            }
             _ => {
                 let known = self.state.lock().await.chats.contains_key(&chat);
                 if known { self.on_input(chat, text).await } else { self.start(chat).await }
@@ -376,7 +367,7 @@ async fn main() -> Result<()> {
     for (chat, id) in &known {
         app.bot.note(*chat, *id);
     }
-    if let Err(e) = app.bot.set_commands(&[("start", "Почати / статус бота"), ("refresh", "Оновити зараз"), ("stop", "Зупинити")]).await {
+    if let Err(e) = app.bot.set_commands(&[("start", "Почати / статус бота"), ("refresh", "Оновити зараз")]).await {
         eprintln!("setMyCommands: {}", e.text());
     }
     let (n, tried) = app.bot.clean_all().await;
