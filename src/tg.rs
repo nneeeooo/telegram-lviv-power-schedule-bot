@@ -163,6 +163,12 @@ impl Bot {
         self.call(self.http.post(format!("{}/{method}", self.base)).json(&body)).await
     }
 
+    /// Command menu shown by Telegram's menu button.
+    pub async fn set_commands(&self, cmds: &[(&str, &str)]) -> Result<(), TgError> {
+        let list: Vec<Value> = cmds.iter().map(|(c, d)| json!({"command": c, "description": d})).collect();
+        self.post::<bool>("setMyCommands", json!({"commands": list})).await.map(|_| ())
+    }
+
     pub async fn updates(&self, offset: i64) -> Result<Vec<Update>, TgError> {
         let u: Vec<Update> = self
             .post("getUpdates", json!({"offset": offset, "timeout": 50, "allowed_updates": ["message", "callback_query"]}))

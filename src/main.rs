@@ -261,11 +261,27 @@ impl App {
         self.sync_chat(chat, true).await;
     }
 
-    async fn on_text(&self, chat: i64, msg: i64, text: &str) {
+    async fn on_text(self: &Arc<Self>,chat: i64, msg: i64, text: &str) {
         self.bot.delete(chat, msg).await.ok(); // keep the chat at two messages
         match text.split(['@', ' ']).next().unwrap_or("") {
             // Buttons of the old reply keyboard (pre-0.2) also mean "start over".
-            "/start" | "➕" | "📋" | "🔄" => self.start(chat).await,
+            "/start" | "➕" | "📋" | "🔄" => {
+                self.start(chat).await;
+                // Short status: an answer at all means the bot runs. Auto-deleted to keep two messages.
+                if let Ok(id) = self.bot.send_text(chat, "✅ Бот працює").await {
+                    let app = self.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(Duration::from_secs(30)).await;
+                        app.bot.delete(chat, id).await.ok();
+                    });
+                }
+            }
+            "/refresh" if self.state.lock().await.chats.contains_key(&chat) => {
+                if let Err(e) = self.fetch().await {
+                    eprintln!("refresh {chat}: {e:#}");
+                }
+                self.sync_chat(chat, true).await;
+            }
             "/stop" => {
                 let old = self.state.lock().await.chats.remove(&chat);
                 self.state.lock().await.save().await;
@@ -359,6 +375,9 @@ async fn main() -> Result<()> {
         .collect();
     for (chat, id) in &known {
         app.bot.note(*chat, *id);
+    }
+    if let Err(e) = app.bot.set_commands(&[("start", "Почати / статус бота"), ("refresh", "Оновити зараз"), ("stop", "Зупинити")]).await {
+        eprintln!("setMyCommands: {}", e.text());
     }
     let (n, tried) = app.bot.clean_all().await;
     println!("cleaned {n} chat(s), {tried} message ids");
